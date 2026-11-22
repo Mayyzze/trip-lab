@@ -1,0 +1,95 @@
+import json
+from datetime import date
+
+from mistralai.client import Mistral
+from pydantic import ValidationError
+
+from trip import weather
+from trip.config import get_settings
+from trip.units import LABELS, Units, convert_forecast
+from trip.models import (
+    CityNotFound,
+    DailyForecast,
+    InvalidTripDates,
+    Location,
+    TripError,
+    TripRequest,
+    WeatherUnavailable,
+    check_forecast_window,
+)
+
+EXTRACT_PROMPT = """Today is {today:%A %Y-%m-%d}.
+Extract the trip request from the user's question.
+- city: the city name only, as written by the user.
+- start, end: ISO dates. Resolve relative dates from today. "This weekend" is the coming
+  Saturday and Sunday, or the current one if today is Saturday or Sunday.
+  If no date is given, use today to today + 2 days."""
+
+ANSWER_PROMPT = """You answer weather questions for travellers.
+Use only the forecast JSON provided; never invent figures. If a requested day is missing,
+say so. Answer in the language of the question, not in the language of the destination, in 3 to 6 short lines, with min/max
+temperature ({temperature}) and precipitation ({precipitation}) per day.
+The forecast values are already in these units: do not convert them."""
+
+settings = get_settings()
+client = Mistral(api_key=settings.mistral_api_key.get_secret_value())
+
+def answer(question: str, units: Units = "metric") -> str:
+    today = date.today()
+    req = _parse_request(question, today)
+    check_forecast_window(req, today=today, horizon_days=get_settings().forecast_horizon_days)
+
+    locations = weather.geocode(req.city)
+    if not locations:
+        raise CityNotFound(f"unknown city: {req.city!r}")
+    loc = locations[0]
+
+    forecasts = weather.get_forecast(loc, req.start, req.end)
+    if not forecasts:
+        raise WeatherUnavailable("no forecast available for these dates")
+    return _write_answer(question, loc, forecasts, units)
+
+def _parse_request(question: str, today: date) -> TripRequest:
+    try:
+        res = client.chat.parse(
+            model=get_settings().mistral_model,
+            messages=[
+                {"role": "system", "content": EXTRACT_PROMPT.format(today=today)},
+                {"role": "user", "content": question},
+            ],
+            response_format=TripRequest,
+            temperature=0,
+            top_p=1,
+            max_tokens=200,
+        )
+    except ValidationError as exc:  # e.g. end < start rejected by TripRequest
+        raise InvalidTripDates("could not understand the requested dates") from exc
+
+    choice = res.choices[0] if res.choices else None
+    message = choice.message if choice else None
+    parsed = message.parsed if message else None
+    if parsed is None:
+        raise TripError("could not understand the question")
+    return parsed
+
+def _write_answer(
+    question: str, loc: Location, forecasts: list[DailyForecast], units: Units
+) -> str:
+    payload = {
+        "location": f"{loc.name}, {loc.country}",
+        "units": LABELS[units],
+        "forecast": [convert_forecast(f, units) for f in forecasts],
+    }
+    res = client.chat.complete(
+        model=get_settings().mistral_model,
+        messages=[
+            {"role": "system", "content": ANSWER_PROMPT.format(**LABELS[units])},
+            {"role": "user", "content": f"Question: {question}\n\nForecast JSON:\n{json.dumps(payload)}"},
+        ],
+        temperature=0.3,
+        max_tokens=400,
+    )
+    content = res.choices[0].message.content if res.choices else None # type: ignore
+    if not isinstance(content, str) or not content.strip():  # content can also be a list of chunks
+        raise TripError("the model returned an empty answer")
+    return content

@@ -19,3 +19,19 @@ class LLMClient(Protocol):
         Raises TripError if no usable answer is produced.
         """
         ...
+
+class WeatherProvider(Protocol):
+    def geocode(self, city: str) -> list[Location]:
+        """Return the locations matching `city`, best match first.
+
+        Returns [] if nothing matches; that is not an error.
+        Raises WeatherUnavailable if the provider cannot be reached.
+        """
+        ...
+
+    def get_forecast(self, loc: Location, start: date, end: date) -> list[DailyForecast]:
+        """Return one DailyForecast per day from `start` to `end`, both included.
+
+        Raises WeatherUnavailable if the provider cannot be reached.
+        """
+        ...

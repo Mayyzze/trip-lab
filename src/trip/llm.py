@@ -18,7 +18,10 @@ Extract the trip request from the user's question.
 - city: the city name only, as written by the user.
 - start, end: ISO dates. Resolve relative dates from today. "This weekend" is the coming
   Saturday and Sunday, or the current one if today is Saturday or Sunday.
-  If no date is given, use today to today + 2 days."""
+  If no date is given, use today to today + 2 days.
+- country: ISO 3166-1 alpha-2 code (e.g. "US", "FR") only if the user names a country
+  or a place that identifies one (e.g. "Texas" -> "US"); otherwise null.
+- region: the state or region name in English, only if the user names one (e.g. "Texas"); otherwise null."""
 
 ANSWER_PROMPT = """You answer weather questions for travellers.
 Use only the forecast JSON provided; never invent figures. If a requested day is missing,

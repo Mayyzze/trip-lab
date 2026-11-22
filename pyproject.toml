@@ -7,10 +7,15 @@ authors = [
     { name = "Mayyzze", email = "achille.depoix@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "httpx>=0.28.1",
+    "mistralai>=3.8.0",
+    "pydantic>=2.14.4",
+    "pydantic-settings>=2.16.3",
+]
 
 [project.scripts]
-trip = "trip:main"
+trip = "trip.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9.26,<0.10.0"]

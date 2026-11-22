@@ -1,0 +1,22 @@
+[project]
+name = "trip-monolith"
+version = "0.1.0"
+description = "Trip weather assistant (single file)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mistralai>=3.8.0",
+    "pydantic>=2.14.4",
+    "pydantic-settings>=2.16.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-socket>=0.8.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--disable-socket"

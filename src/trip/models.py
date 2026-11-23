@@ -62,12 +62,12 @@ class TripRequest(BaseModel):
             raise InvalidTripDates(f"end ({self.end}) is before start ({self.start})")
         return self    
 
-def check_forecast_window(req: TripRequest, today: date, horizon_days: int) -> None:
-    """Raise if the request is outside [today, today + horizon_days - 1]."""
+def check_forecast_window(start: date, end: date, *, today: date, horizon_days: int) -> None:
+    """Raise if [start, end] is not inside [today, today + horizon_days - 1]."""
     last_day = today + timedelta(days=horizon_days - 1)
-    if req.start < today:
-        raise InvalidTripDates(f"{req.start} is in the past")
-    if req.end > last_day:
+    if start < today:
+        raise InvalidTripDates(f"{start} is in the past")
+    if end > last_day:
         raise InvalidTripDates(f"forecasts only go up to {last_day} ({horizon_days} days ahead)")
 
 

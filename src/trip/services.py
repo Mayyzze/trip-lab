@@ -2,11 +2,13 @@ from collections.abc import Callable
 from datetime import date
 
 from trip.models import (
+    Location,
+    TripRequest,
     WeatherUnavailable,
     check_forecast_window,
     pick_location,
 )
-from trip.ports import LLMClient, WeatherProvider
+from trip.ports import DailyForecast, LLMClient, WeatherProvider
 
 
 class TripService:
@@ -17,16 +19,21 @@ class TripService:
         self._today = today
         self._horizon_days = horizon_days
         
-    def answer(self, question: str) -> str :
+    async def answer(self, question: str) -> str :
         today = self._today()
-        req = self._llm.extract_request(question, today)
+        req = await self._llm.extract_request(question, today)
         check_forecast_window(req, today, self._horizon_days)
 
-        candidates = self._weather.geocode(req.city)
+        loc, forecasts = await self._forecast_city(req=req)
+
+        return await self._llm.write_answer(question, loc, forecasts)
+
+    async def _forecast_city(self, req: TripRequest) -> tuple[Location, list[DailyForecast]]:
+        candidates = await self._weather.geocode(req.city)
         loc = pick_location(req.city, candidates, country=req.country, region=req.region)
 
-        forecasts = self._weather.get_forecast(loc, req.start, req.end)
+        forecasts = await self._weather.get_forecast(loc, req.start, req.end)
         if not forecasts:
             raise WeatherUnavailable("no forecast available for these dates")
-        return self._llm.write_answer(question, loc, forecasts)
-    
+
+        return loc, forecasts

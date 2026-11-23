@@ -34,9 +34,9 @@ class MistralLLM:
         self.client = client
         self.settings = settings
 
-    def extract_request(self, question: str, today: date) -> TripRequest:
+    async def extract_request(self, question: str, today: date) -> TripRequest:
         try:
-            res = self.client.chat.parse(
+            res = await self.client.chat.parse_async(
                 model=self.settings.mistral_model,
                 messages=[
                     {"role": "system", "content": EXTRACT_PROMPT.format(today=today)},
@@ -57,12 +57,12 @@ class MistralLLM:
             raise TripError("could not understand the question")
         return parsed
 
-    def write_answer(self, question: str, loc: Location, forecasts: list[DailyForecast]) -> str:
+    async def write_answer(self, question: str, loc: Location, forecasts: list[DailyForecast]) -> str:
         payload = {
             "location": f"{loc.name}, {loc.country}",
             "forecast": [f.model_dump(mode="json") for f in forecasts],
         }
-        res = self.client.chat.complete(
+        res = await self.client.chat.complete_async(
             model=get_settings().mistral_model,
             messages=[
                 {"role": "system", "content": ANSWER_PROMPT},

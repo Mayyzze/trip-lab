@@ -36,43 +36,43 @@ def make_service(weather: FakeWeather, llm: FakeLLM) -> TripService:
     return TripService(weather, llm, today=lambda: TODAY, horizon_days=HORIZON_DAYS)
 
 
-def test_answers_from_the_forecast_of_the_requested_city():
+async def test_answers_from_the_forecast_of_the_requested_city():
     forecasts = forecasts_for(day(1), day(2))
     weather = FakeWeather({"Lisbon": [LISBON]}, forecasts)
     llm = FakeLLM(TripRequest(city="Lisbon", start=day(1), end=day(2)), answer="Sunny in Lisbon.")
 
-    result = make_service(weather, llm).answer(QUESTION)
+    result = await make_service(weather, llm).answer(QUESTION)
 
     assert result == "Sunny in Lisbon."
     assert llm.written == [(QUESTION, LISBON, forecasts)]
 
 
-def test_unknown_city_is_refused_before_any_forecast():
+async def test_unknown_city_is_refused_before_any_forecast():
     weather = FakeWeather({})
     llm = FakeLLM(TripRequest(city="Atlantis", start=day(1), end=day(2)))
 
     with pytest.raises(CityNotFound):
-        make_service(weather, llm).answer("What's the weather in Atlantis?")
+        await make_service(weather, llm).answer("What's the weather in Atlantis?")
 
     assert weather.calls == [("geocode", "Atlantis")]
     assert llm.written == []
 
 
-def test_accepts_the_last_day_of_the_horizon():
+async def test_accepts_the_last_day_of_the_horizon():
     last = day(HORIZON_DAYS - 1)
     weather = FakeWeather({"Lisbon": [LISBON]}, forecasts_for(last, last))
     llm = FakeLLM(TripRequest(city="Lisbon", start=last, end=last))
 
-    assert make_service(weather, llm).answer(QUESTION) == "Sunny in Lisbon."
+    assert await make_service(weather, llm).answer(QUESTION) == "Sunny in Lisbon."
 
 
 @pytest.mark.parametrize("offset", [HORIZON_DAYS, 28])
-def test_refuses_dates_beyond_the_horizon_without_calling_the_weather(offset: int):
+async def test_refuses_dates_beyond_the_horizon_without_calling_the_weather(offset: int):
     weather = FakeWeather({"Lisbon": [LISBON]}, forecasts_for(day(offset), day(offset)))
     llm = FakeLLM(TripRequest(city="Lisbon", start=day(offset), end=day(offset)))
 
     with pytest.raises(InvalidTripDates):
-        make_service(weather, llm).answer(QUESTION)
+        await make_service(weather, llm).answer(QUESTION)
 
     assert weather.calls == []
     assert llm.written == []
@@ -93,31 +93,31 @@ PARIS_TN = place("Paris", "Tennessee", "US", 10_156, 36.30, -88.33)
 PARIS_ALL = [PARIS_FR, PARIS_TX, PARIS_TN]
 
 
-def test_ambiguous_city_asks_which_one_before_any_forecast():
+async def test_ambiguous_city_asks_which_one_before_any_forecast():
     weather = FakeWeather({"Springfield": SPRINGFIELDS})
     llm = FakeLLM(TripRequest(city="Springfield", start=day(1), end=day(2)))
 
     with pytest.raises(AmbiguousCity) as exc_info:
-        make_service(weather, llm).answer("What's the weather in Springfield?")
+        await make_service(weather, llm).answer("What's the weather in Springfield?")
 
     assert {c.region for c in exc_info.value.candidates} == {"Missouri", "Massachusetts", "Illinois"}
     assert weather.calls == [("geocode", "Springfield")]
     assert llm.written == []
 
 
-def test_a_dominant_namesake_is_picked_without_asking():
+async def test_a_dominant_namesake_is_picked_without_asking():
     weather = FakeWeather({"Paris": PARIS_ALL}, forecasts_for(day(1), day(2)))
     llm = FakeLLM(TripRequest(city="Paris", start=day(1), end=day(2)))
 
-    make_service(weather, llm).answer("What's the weather in Paris?")
+    await make_service(weather, llm).answer("What's the weather in Paris?")
 
     assert llm.written[0][1] == PARIS_FR
 
 
-def test_region_named_by_the_user_resolves_the_namesake():
+async def test_region_named_by_the_user_resolves_the_namesake():
     weather = FakeWeather({"Paris": PARIS_ALL}, forecasts_for(day(1), day(2)))
     llm = FakeLLM(TripRequest(city="Paris", start=day(1), end=day(2), country="US", region="Texas"))
 
-    make_service(weather, llm).answer("What's the weather in Paris, Texas?")
+    await make_service(weather, llm).answer("What's the weather in Paris, Texas?")
 
     assert llm.written[0][1] == PARIS_TX

@@ -14,13 +14,13 @@ GEOCODE_COUNT = 10   # enough namesakes for the ambiguity rule; the right one mu
 logger = logging.getLogger(__name__)
 
 class OpenMeteoProvider:
-    def __init__(self, http: httpx.Client):
+    def __init__(self, http: httpx.AsyncClient):
         self._http = http
 
-    def geocode(self, city: str) -> list[Location]:
+    async def geocode(self, city: str) -> list[Location]:
         """Candidate locations for a city name, best match first. Empty list if unknown."""
         params = {"name": city.strip(), "count": GEOCODE_COUNT, "language": "en", "format": "json"}
-        data = self._get_json(GEOCODING_URL, params)
+        data = await self._get_json(GEOCODING_URL, params)
         try:
             # Open-Meteo omits the "results" key entirely when nothing matches.
             return [
@@ -39,7 +39,7 @@ class OpenMeteoProvider:
             raise WeatherUnavailable("unexpected geocoding response") from exc
 
 
-    def get_forecast(self, loc: Location, start: date, end: date) -> list[DailyForecast]:
+    async def get_forecast(self, loc: Location, start: date, end: date) -> list[DailyForecast]:
         """Daily forecast for [start, end], days in the location's local time zone."""
         params = {
             "latitude": loc.lat,
@@ -49,7 +49,7 @@ class OpenMeteoProvider:
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
         }
-        data = self._get_json(FORECAST_URL, params)
+        data = await self._get_json(FORECAST_URL, params)
         try:
             daily = data["daily"]
             rows = zip(daily["time"], *(daily[v] for v in DAILY_VARS), strict=True)
@@ -72,9 +72,9 @@ class OpenMeteoProvider:
             raise WeatherUnavailable("unexpected forecast response") from exc
 
 
-    def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+    async def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         try:
-            resp = self._http.get(url, params=params)
+            resp = await self._http.get(url, params=params)
             resp.raise_for_status()
             return resp.json()
         except (httpx.HTTPError, ValueError) as exc:  # network, timeout, 4xx/5xx, invalid JSON

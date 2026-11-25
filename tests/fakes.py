@@ -4,6 +4,16 @@ from datetime import date
 from trip.models import DailyForecast, Location, TripRequest, WeatherUnavailable
 
 
+class FakeClock:
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+        
 class FakeLLM:
     def __init__(self, request: TripRequest | None = None, answer: str = "Sunny in Lisbon.") -> None:
         self._request = request

@@ -6,9 +6,11 @@ import sys
 import httpx
 from mistralai.client import Mistral
 
+from trip.cache import CachedWeather
 from trip.config import get_settings
 from trip.llm import MistralLLM
 from trip.models import AmbiguousCity, TripError
+from trip.ports import WeatherProvider
 from trip.services import TripService
 from trip.weather import OpenMeteoProvider
 
@@ -33,7 +35,10 @@ def main(argv: list[str] | None = None) -> int:
     
     async def core(question: str) -> None:
         async with httpx.AsyncClient(timeout=5.0) as http:
-            service = TripService(OpenMeteoProvider(http), llm=mistral, horizon_days=get_settings().forecast_horizon_days)
+            weather: WeatherProvider = OpenMeteoProvider(http)
+            if settings.weather_cache_enabled:
+                weather = CachedWeather(weather, forecast_ttl_s=settings.forecast_cache_ttl_s)
+            service = TripService(weather, llm=mistral, horizon_days=get_settings().forecast_horizon_days)
             print(await service.answer(question))
         
     

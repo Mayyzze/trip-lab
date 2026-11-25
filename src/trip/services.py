@@ -1,14 +1,15 @@
-from collections.abc import Callable
-from datetime import date
 import asyncio
 import logging
+from collections.abc import Callable
+from datetime import date
+
 from trip.models import (
     Location,
+    TripError,
     TripRequest,
     WeatherUnavailable,
     check_forecast_window,
     pick_location,
-    TripError
 )
 from trip.ports import DailyForecast, LLMClient, WeatherProvider
 
@@ -43,7 +44,7 @@ class TripService:
             raise ValueError(f"concurrency must be >= 1, got {concurrency}")
         check_forecast_window(start, end, today=self._today(), horizon_days=self._horizon_days)
 
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(concurrency)
 
         async def one(city: str) -> list[DailyForecast] | TripError:
             async with sem:

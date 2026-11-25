@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     mistral_model: str = "mistral-large-latest"
     http_timeout_s: float = 5.0
     forecast_horizon_days: int = 16
+    weather_cache_enabled: bool = True
+    forecast_cache_ttl_s: float = 3600
 
 
 @lru_cache

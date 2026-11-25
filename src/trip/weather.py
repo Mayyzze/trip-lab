@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from trip.models import DailyForecast, Location, WeatherUnavailable
+from trip.retry import retry
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -12,6 +13,16 @@ DAILY_VARS = ("temperature_2m_min", "temperature_2m_max", "precipitation_sum", "
 GEOCODE_COUNT = 10   # enough namesakes for the ambiguity rule; the right one must not be cut off
 
 logger = logging.getLogger(__name__)
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Errors worth a second try: timeouts, network failures, 429 and 5xx."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or status >= 500
+    return isinstance(exc, httpx.TimeoutException | httpx.NetworkError | httpx.RemoteProtocolError)
+
+
 
 class OpenMeteoProvider:
     def __init__(self, http: httpx.AsyncClient):
@@ -71,12 +82,16 @@ class OpenMeteoProvider:
         except (KeyError, ValueError) as exc:  # pydantic.ValidationError is a ValueError
             raise WeatherUnavailable("unexpected forecast response") from exc
 
+    @retry(retry_on=_is_transient)
+    async def _fetch(self, url: str, params: dict[str, Any]) -> httpx.Response:
+        resp = await self._http.get(url, params=params)
+        resp.raise_for_status()
+        return resp
+
 
     async def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         try:
-            resp = await self._http.get(url, params=params)
-            resp.raise_for_status()
-            return resp.json()
+            return (await self._fetch(url, params)).json()
         except (httpx.HTTPError, ValueError) as exc:  # network, timeout, 4xx/5xx, invalid JSON
             logger.warning("Open-Meteo call failed: %s", exc)
             raise WeatherUnavailable("weather service unavailable") from exc

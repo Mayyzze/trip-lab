@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from trip.models import DailyForecast, Location
 from trip.services import TripService
 
-from .fakes import FakeLLM, FakeWeather
+from .fakes import FakeGuides, FakeLLM, FakeWeather
 
 TODAY = date(2026, 11, 22)
 HORIZON_DAYS = 16
@@ -28,4 +28,11 @@ def daily_forecasts(start: date, end: date) -> list[DailyForecast]:
 
 
 def make_service(weather: FakeWeather, llm: FakeLLM | None = None) -> TripService:
-    return TripService(weather, llm or FakeLLM(), today=lambda: TODAY, horizon_days=HORIZON_DAYS)
+    return TripService(
+        weather,
+        llm or FakeLLM(),
+        guides=FakeGuides(),
+        today=lambda: TODAY,
+        horizon_days=HORIZON_DAYS,
+        top_k=4,
+    )

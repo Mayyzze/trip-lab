@@ -1,0 +1,10 @@
+{"q": "What can I do in Lisbon with my kids?", "city": "lisbon", "must_contain": "Oceanarium"}
+{"q": "It's pouring in Lisbon tonight, where can I watch opera or ballet?", "city": "lisbon", "must_contain": "Teatro Nacional de São Carlos"}
+{"q": "Which Lisbon museum can I visit on a wet day to see old works of art?", "city": "lisbon", "must_contain": "Museu Nacional de Arte Antiga"}
+{"q": "What sweet treat should I taste in Lisbon?", "city": "lisbon", "must_contain": "Pastel De Nata"}
+{"q": "Where in Porto can I climb up high to look out over the city?", "city": "porto", "must_contain": "Panoramic views from this baroque tower"}
+{"q": "Which walk in Edinburgh rewards you with the best views?", "city": "edinburgh", "must_contain": "Climbing Arthur's Seat"}
+{"q": "Where do I eat traditional local cooking in Lyon?", "city": "lyon", "must_contain": "traditional restaurants in Lyon are called bouchons"}
+{"q": "Where can children see sea animals in Valencia?", "city": "valencia", "must_contain": "largest oceanarium in Europe"}
+{"q": "Rainy afternoon in Bordeaux: is there an indoor place to learn about wine history?", "city": "bordeaux", "must_contain": "2000 years of wine production"}
+{"q": "It's raining in Munich, where can I spend hours on science and engineering exhibits?", "city": "munich", "must_contain": "occupies an entire river island"}

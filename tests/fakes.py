@@ -1,7 +1,17 @@
 import asyncio
+import hashlib
+import math
+import re
 from datetime import date
 
-from trip.models import DailyForecast, Location, TripRequest, WeatherUnavailable
+from trip.models import (
+    DailyForecast,
+    Evidence,
+    Location,
+    ParsedQuestion,
+    WeatherUnavailable,
+)
+from trip.rag import Chunk, Hit
 
 
 class FakeClock:
@@ -14,20 +24,55 @@ class FakeClock:
     def advance(self, seconds: float) -> None:
         self.now += seconds
         
+class FakeEmbedder:
+    """Hashed bag of words: texts sharing words get similar vectors, offline and deterministic."""
+
+    DIM = 1024
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        return [self._vector(text) for text in texts]
+
+    def _vector(self, text: str) -> list[float]:
+        vector = [0.0] * self.DIM
+        for token in re.findall(r"\w+", text.lower()):
+            digest = hashlib.sha256(token.encode()).digest()  # hash() changes between runs
+            vector[int.from_bytes(digest[:8]) % self.DIM] += 1.0
+        norm = math.hypot(*vector)
+        return [v / norm for v in vector] if norm else vector
+
 class FakeLLM:
-    def __init__(self, request: TripRequest | None = None, answer: str = "Sunny in Lisbon.") -> None:
-        self._request = request
+    def __init__(self, parsed: ParsedQuestion | None = None, answer: str = "Sunny in Lisbon.") -> None:
+        self._parsed = parsed
         self._answer = answer
-        self.written: list[tuple[str, Location, list[DailyForecast]]] = []
+        self.written: list[tuple[str, Evidence]] = []
 
-    async def extract_request(self, question: str, today: date) -> TripRequest:
-        if self._request is None:
-            raise AssertionError("FakeLLM.extract_request called but no request was configured")
-        return self._request
+    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
+        if self._parsed is None:
+            raise AssertionError("FakeLLM.parse_question called but nothing was configured")
+        return self._parsed
 
-    async def write_answer(self, question: str, loc: Location, forecasts: list[DailyForecast]) -> str:
-        self.written.append((question, loc, forecasts))
+    async def write_answer(self, question: str, evidence: Evidence) -> str:
+        self.written.append((question, evidence))
         return self._answer
+
+class FakeGuides:
+    """Returns the chunks of the requested city slug, or raises `error`."""
+
+    def __init__(self, *chunks: Chunk, error: Exception | None = None) -> None:
+        self._chunks = chunks
+        self._error = error
+        self.calls: list[tuple[str, int, str | None]] = []
+
+    async def search(self, query: str, k: int = 4, city: str | None = None) -> list[Hit]:
+        self.calls.append((query, k, city))
+        await asyncio.sleep(0)
+        if self._error:
+            raise self._error
+        return [Hit(c, 0.5) for c in self._chunks if c.city == city][:k]
 
 class FakeWeather:
     def __init__(

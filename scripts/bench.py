@@ -13,8 +13,9 @@ import httpx
 
 from trip.cache import CachedWeather
 from trip.config import get_settings
-from trip.models import DailyForecast, Location, TripRequest
+from trip.models import DailyForecast, Evidence, Location, ParsedQuestion
 from trip.ports import WeatherProvider
+from trip.rag import Hit
 from trip.services import TripService
 from trip.weather import OpenMeteoProvider
 
@@ -55,11 +56,16 @@ class TimedWeather:
 class _UnusedLLM:
     """forecasts_for never talks to the LLM; fail loudly if that changes."""
 
-    async def extract_request(self, question: str, today: date) -> TripRequest:
+    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
         raise AssertionError("LLM must not be called in the bench")
 
-    async def write_answer(self, question: str, loc: Location, forecasts: list[DailyForecast]) -> str:
+    async def write_answer(self, question: str, evidence: Evidence) -> str:
         raise AssertionError("LLM must not be called in the bench")
+
+
+class _UnusedGuides:
+    async def search(self, query: str, k: int = 4, city: str | None = None) -> list[Hit]:
+        raise AssertionError("guides must not be searched in the bench")
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +96,13 @@ async def run(
         provider: WeatherProvider = OpenMeteoProvider(http)
         if cache:
             provider = CachedWeather(provider)
-        service = TripService(TimedWeather(provider, durations), _UnusedLLM(), horizon_days=settings.forecast_horizon_days)
+        service = TripService(
+            TimedWeather(provider, durations),
+            _UnusedLLM(),
+            guides=_UnusedGuides(),
+            horizon_days=settings.forecast_horizon_days,
+            top_k=settings.rag_top_k,
+        )
 
         for n in range(passes):
             calls = 0

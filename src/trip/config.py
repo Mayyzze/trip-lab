@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     forecast_horizon_days: int = 16
     weather_cache_enabled: bool = True
     forecast_cache_ttl_s: float = 3600
+    embed_model: str = "mistral-embed"
+    embed_batch_size: int = 32
+    chunk_size: int = 800                      # characters
+    chunk_overlap: int = 100                   # characters
+    rag_top_k: int = 4
+    guides_dir: Path = PROJECT_ROOT / "data" / "guides"
+    index_dir: Path = PROJECT_ROOT / "data" / "index"
 
 
 @lru_cache

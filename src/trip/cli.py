@@ -8,9 +8,10 @@ from mistralai.client import Mistral
 
 from trip.cache import CachedWeather
 from trip.config import get_settings
-from trip.llm import MistralLLM
+from trip.llm import MistralEmbedder, MistralLLM
 from trip.models import AmbiguousCity, TripError
 from trip.ports import WeatherProvider
+from trip.rag import Retriever, load_or_build
 from trip.services import TripService
 from trip.weather import OpenMeteoProvider
 
@@ -30,15 +31,25 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx loggue chaque requête en INFO
 
     settings = get_settings()
-    mistral = MistralLLM(client=Mistral(api_key=settings.mistral_api_key.get_secret_value()), settings=settings)
-    
-    
+    client = Mistral(api_key=settings.mistral_api_key.get_secret_value())
+    mistral = MistralLLM(client=client, settings=settings)
+    embedder = MistralEmbedder(
+        client=client, model=settings.embed_model, batch_size=settings.embed_batch_size
+    )
+
     async def core(question: str) -> None:
+        index = await load_or_build(settings.guides_dir, settings.index_dir, embedder, settings)
         async with httpx.AsyncClient(timeout=5.0) as http:
             weather: WeatherProvider = OpenMeteoProvider(http)
             if settings.weather_cache_enabled:
                 weather = CachedWeather(weather, forecast_ttl_s=settings.forecast_cache_ttl_s)
-            service = TripService(weather, llm=mistral, horizon_days=get_settings().forecast_horizon_days)
+            service = TripService(
+                weather,
+                llm=mistral,
+                guides=Retriever(index, embedder),
+                horizon_days=settings.forecast_horizon_days,
+                top_k=settings.rag_top_k,
+            )
             print(await service.answer(question))
         
     

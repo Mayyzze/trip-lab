@@ -1,4 +1,6 @@
+from dataclasses import dataclass, field
 from datetime import date, timedelta
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -11,6 +13,10 @@ class InvalidTripDates(TripError): ...
 class CityNotFound(TripError): ...
 
 class WeatherUnavailable(TripError): ...
+
+class EmbeddingUnavailable(TripError): ...
+
+class GuidesNotFound(TripError): ...
 
 class Location(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
@@ -61,6 +67,25 @@ class TripRequest(BaseModel):
         if self.end < self.start:
             raise InvalidTripDates(f"end ({self.end}) is before start ({self.start})")
         return self    
+
+class ParsedQuestion(BaseModel):
+    """What the model extracts from a question. Not trusted to be complete: see TripRequest."""
+
+    model_config = ConfigDict(frozen=True)
+
+    city: str | None
+    start: date | None
+    end: date | None
+    topic: Literal["weather", "activities", "both"]
+    country: str | None = None          # ISO alpha-2, only if the user named one
+    region: str | None = None           # only if the user named one, e.g. "Texas"
+
+@dataclass(frozen=True)
+class Evidence:
+    """What an answer may rely on, all gathered by code."""
+
+    forecast: tuple[Location, list[DailyForecast]] | None = None
+    sources: dict[str, str] = field(default_factory=dict)  # chunk ID -> guide text
 
 def check_forecast_window(start: date, end: date, *, today: date, horizon_days: int) -> None:
     """Raise if [start, end] is not inside [today, today + horizon_days - 1]."""

@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from trip.extract import FewShotExtractor
 from trip.models import (
     AmbiguousCity,  # add to the existing import
     CityNotFound,
@@ -10,10 +11,11 @@ from trip.models import (
     InvalidTripDates,
     Location,
     ParsedQuestion,
+    TripError,
 )
 from trip.services import TripService
 
-from .fakes import FakeGuides, FakeLLM, FakeWeather
+from .fakes import FakeGuides, FakeLLM, FakeWeather, completion
 
 TODAY = date(2026, 11, 22)
 HORIZON_DAYS = 16                      # Open-Meteo: today + 15 is the last forecast day
@@ -37,6 +39,7 @@ def make_service(weather: FakeWeather, llm: FakeLLM) -> TripService:
     return TripService(
         weather,
         llm,
+        extractor=llm,
         guides=FakeGuides(),
         today=lambda: TODAY,
         horizon_days=HORIZON_DAYS,
@@ -62,6 +65,20 @@ async def test_answers_from_the_forecast_of_the_requested_city():
 
     assert result == "Sunny in Lisbon."
     assert llm.written == [(QUESTION, Evidence(forecast=(LISBON, forecasts)))]
+
+
+async def test_an_unreadable_extraction_stops_before_any_lookup():
+    weather, guides = FakeWeather(), FakeGuides()
+    llm = FakeLLM(reply=completion("no idea"))
+    service = TripService(
+        weather, llm, extractor=FewShotExtractor(llm), guides=guides,
+        today=lambda: TODAY, horizon_days=HORIZON_DAYS, top_k=4,
+    )
+
+    with pytest.raises(TripError, match="could not understand"):
+        await service.answer(QUESTION)
+
+    assert weather.calls == [] and guides.calls == [] and llm.written == []
 
 
 async def test_unknown_city_is_refused_before_any_forecast():

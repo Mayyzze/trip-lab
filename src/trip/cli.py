@@ -8,6 +8,7 @@ from mistralai.client import Mistral
 
 from trip.cache import CachedWeather
 from trip.config import get_settings
+from trip.extract import VARIANTS
 from trip.llm import MistralEmbedder, MistralLLM
 from trip.models import AmbiguousCity, TripError
 from trip.ports import WeatherProvider
@@ -46,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
             service = TripService(
                 weather,
                 llm=mistral,
+                extractor=VARIANTS[settings.extraction_variant](mistral),
                 guides=Retriever(index, embedder),
                 horizon_days=settings.forecast_horizon_days,
                 top_k=settings.rag_top_k,

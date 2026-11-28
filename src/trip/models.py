@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Literal
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -17,6 +17,10 @@ class WeatherUnavailable(TripError): ...
 class EmbeddingUnavailable(TripError): ...
 
 class GuidesNotFound(TripError): ...
+
+class LLMUnavailable(TripError): ...
+
+class ExtractionFormatError(TripError): ...
 
 class Location(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
@@ -79,6 +83,23 @@ class ParsedQuestion(BaseModel):
     topic: Literal["weather", "activities", "both"]
     country: str | None = None          # ISO alpha-2, only if the user named one
     region: str | None = None           # only if the user named one, e.g. "Texas"
+
+class Message(TypedDict):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+
+@dataclass(frozen=True)
+class Completion:
+    """One model reply and what it cost."""
+
+    text: str  # "" if the model returned no text
+    prompt_tokens: int
+    completion_tokens: int
+    finish_reason: str
+    latency_s: float  # the successful attempt only, without the waits between retries
+    retries: int
+
 
 @dataclass(frozen=True)
 class Evidence:

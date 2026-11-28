@@ -41,7 +41,8 @@ def parsed(
 
 def make_service(weather: FakeWeather, llm: FakeLLM, guides: FakeGuides) -> TripService:
     return TripService(
-        weather, llm, guides=guides, today=lambda: TODAY, horizon_days=HORIZON_DAYS, top_k=4
+        weather, llm, extractor=llm, guides=guides,
+        today=lambda: TODAY, horizon_days=HORIZON_DAYS, top_k=4,
     )
 
 
@@ -74,7 +75,7 @@ async def test_the_whole_rag_path_cites_a_provided_chunk():
     index = await build_index(docs, embedder, model="fake", size=800, overlap=100)
     llm = FakeLLM(parsed(), answer="Go there [lisbon#0].")
     service = TripService(
-        lisbon_weather(), llm, guides=Retriever(index, embedder),
+        lisbon_weather(), llm, extractor=llm, guides=Retriever(index, embedder),
         today=lambda: TODAY, horizon_days=HORIZON_DAYS, top_k=4,
     )
 

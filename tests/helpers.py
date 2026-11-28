@@ -28,9 +28,11 @@ def daily_forecasts(start: date, end: date) -> list[DailyForecast]:
 
 
 def make_service(weather: FakeWeather, llm: FakeLLM | None = None) -> TripService:
+    llm = llm or FakeLLM()
     return TripService(
         weather,
-        llm or FakeLLM(),
+        llm,
+        extractor=llm,
         guides=FakeGuides(),
         today=lambda: TODAY,
         horizon_days=HORIZON_DAYS,

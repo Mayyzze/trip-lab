@@ -1,16 +1,28 @@
+import asyncio
 import json
 import logging
-from datetime import date
+import time
+from collections.abc import Awaitable, Callable
 from itertools import batched
+from typing import Any
 
 import httpx2  # the HTTP library of the Mistral SDK: its network errors are httpx2 errors
 from mistralai.client import Mistral
 from mistralai.client.errors import MistralError, NoResponseError
-from pydantic import ValidationError
+from mistralai.client.models import ChatCompletionResponse
+from mistralai.extra.utils.response_format import response_format_from_pydantic_model
+from pydantic import BaseModel
 
 from trip.config import Settings
-from trip.models import EmbeddingUnavailable, Evidence, ParsedQuestion, TripError
-from trip.prompts import EXTRACT_PROMPT, GUIDE_PROMPT, WEATHER_PROMPT, format_sources
+from trip.models import (
+    Completion,
+    EmbeddingUnavailable,
+    Evidence,
+    LLMUnavailable,
+    Message,
+    TripError,
+)
+from trip.prompts import GUIDE_PROMPT, WEATHER_PROMPT, format_sources
 from trip.retry import retry
 
 logger = logging.getLogger(__name__)
@@ -54,32 +66,66 @@ class MistralEmbedder:
 
 class MistralLLM:
 
-    def __init__(self, *,  client: Mistral, settings: Settings):
+    def __init__(
+        self,
+        *,
+        client: Mistral,
+        settings: Settings,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ):
         self.client = client
         self.settings = settings
+        self._sleep = sleep  # injected so that tests do not wait between retries
 
-    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
+    async def complete(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int,
+        response_schema: type[BaseModel] | None = None,
+    ) -> Completion:
+        request: dict[str, Any] = {
+            "model": self.settings.mistral_model,
+            "messages": messages,
+            "temperature": 0,
+            "top_p": 1,
+            "max_tokens": max_tokens,
+        }
+        if response_schema:
+            # What chat.parse_async sends. Parsing is left to the caller: parse_async raises on a
+            # truncated reply and loses its token counts and finish reason.
+            request["response_format"] = response_format_from_pydantic_model(response_schema)
+
+        attempts = 0
+        latency_s = 0.0
+
+        @retry(retry_on=_is_transient, sleep=self._sleep)
+        async def call() -> ChatCompletionResponse:
+            nonlocal attempts, latency_s
+            attempts += 1
+            started = time.perf_counter()  # inside the retry: backoff is not model latency
+            response = await self.client.chat.complete_async(**request)
+            latency_s = time.perf_counter() - started
+            return response
+
         try:
-            res = await self.client.chat.parse_async(
-                model=self.settings.mistral_model,
-                messages=[
-                    {"role": "system", "content": EXTRACT_PROMPT.format(today=today)},
-                    {"role": "user", "content": question},
-                ],
-                response_format=ParsedQuestion,
-                temperature=0,
-                top_p=1,
-                max_tokens=200,
-            )
-        except ValidationError as exc:  # e.g. a date that is not a date
-            raise TripError("could not understand the question") from exc
+            res = await call()
+        except (MistralError, NoResponseError, httpx2.HTTPError) as exc:
+            logger.warning("chat call failed after %d attempt(s): %s", attempts, exc)
+            raise LLMUnavailable("language model unavailable") from exc
+        if not res.choices:
+            raise LLMUnavailable("the model returned no choice")
 
-        choice = res.choices[0] if res.choices else None
-        message = choice.message if choice else None
-        parsed = message.parsed if message else None
-        if parsed is None:
-            raise TripError("could not understand the question")
-        return parsed
+        choice = res.choices[0]
+        content = choice.message.content if choice.message else None
+        return Completion(
+            text=content if isinstance(content, str) else "",
+            prompt_tokens=res.usage.prompt_tokens or 0,
+            completion_tokens=res.usage.completion_tokens or 0,
+            finish_reason=str(choice.finish_reason),
+            latency_s=latency_s,
+            retries=attempts - 1,
+        )
 
     async def write_answer(self, question: str, evidence: Evidence) -> str:
         forecast = "not available"

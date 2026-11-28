@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,9 @@ class Settings(BaseSettings):
 
     mistral_api_key: SecretStr                 # lit MISTRAL_API_KEY (casse ignorée)
     mistral_model: str = "mistral-large-latest"
+    # A name of trip.extract.VARIANTS (a test checks the list). Chosen in S5 from
+    # scripts/compare_prompts.py, measured on mistral-small-latest.
+    extraction_variant: Literal["zero_shot", "few_shot", "cot", "structured"] = "few_shot"
     http_timeout_s: float = 5.0
     forecast_horizon_days: int = 16
     weather_cache_enabled: bool = True

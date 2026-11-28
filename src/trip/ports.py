@@ -1,25 +1,35 @@
 from datetime import date
 from typing import TYPE_CHECKING, Protocol
 
-from trip.models import DailyForecast, Evidence, Location, ParsedQuestion
+from pydantic import BaseModel
+
+from trip.models import Completion, DailyForecast, Evidence, Location, Message
 
 if TYPE_CHECKING:  # rag.py imports this module
     from trip.rag import Hit
 
 
 class LLMClient(Protocol):
-    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
-        """Extract the city, dates and topic of a natural-language question.
-
-        Relative dates are resolved against `today`; dates not mentioned stay None.
-        Raises TripError if the question cannot be understood.
-        """
-        ...
-
     async def write_answer(self, question: str, evidence: Evidence) -> str:
         """Write the answer to `question` using only the evidence.
 
         Raises TripError if no usable answer is produced.
+        """
+        ...
+
+class ChatModel(Protocol):
+    async def complete(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int,
+        response_schema: type[BaseModel] | None = None,
+    ) -> Completion:
+        """One deterministic reply to `messages` (temperature 0).
+
+        With `response_schema`, the reply is constrained to that JSON schema; it is not validated
+        and can be truncated, so check `finish_reason`.
+        Raises LLMUnavailable if no reply can be obtained.
         """
         ...
 

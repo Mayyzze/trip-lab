@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from datetime import date, timedelta
 
+from trip.extract import Extractor
 from trip.models import (
     AmbiguousCity,
     CityNotFound,
@@ -35,6 +36,7 @@ class TripService:
         weather: WeatherProvider,
         llm: LLMClient,
         *,
+        extractor: Extractor,
         guides: GuideSearch,
         today: Callable[[], date] = date.today,
         horizon_days: int,
@@ -42,6 +44,7 @@ class TripService:
     ):
         self._weather = weather
         self._llm = llm
+        self._extractor = extractor
         self._guides = guides
         self._today = today
         self._horizon_days = horizon_days
@@ -54,7 +57,9 @@ class TripService:
         nothing to answer with, or when the city or the dates need fixing.
         """
         today = self._today()
-        parsed = await self._llm.parse_question(question, today)
+        parsed = (await self._extractor.extract(question, today)).parsed
+        if parsed is None:
+            raise TripError("could not understand the question")
         if not parsed.city:
             raise TripError("which city? Name it in your question")
         wants_guide = parsed.topic != "weather"

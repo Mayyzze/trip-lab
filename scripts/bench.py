@@ -13,7 +13,8 @@ import httpx
 
 from trip.cache import CachedWeather
 from trip.config import get_settings
-from trip.models import DailyForecast, Evidence, Location, ParsedQuestion
+from trip.extract import Extraction
+from trip.models import DailyForecast, Evidence, Location
 from trip.ports import WeatherProvider
 from trip.rag import Hit
 from trip.services import TripService
@@ -56,11 +57,13 @@ class TimedWeather:
 class _UnusedLLM:
     """forecasts_for never talks to the LLM; fail loudly if that changes."""
 
-    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
-        raise AssertionError("LLM must not be called in the bench")
-
     async def write_answer(self, question: str, evidence: Evidence) -> str:
         raise AssertionError("LLM must not be called in the bench")
+
+
+class _UnusedExtractor:
+    async def extract(self, question: str, today: date) -> Extraction:
+        raise AssertionError("no question is extracted in the bench")
 
 
 class _UnusedGuides:
@@ -99,6 +102,7 @@ async def run(
         service = TripService(
             TimedWeather(provider, durations),
             _UnusedLLM(),
+            extractor=_UnusedExtractor(),
             guides=_UnusedGuides(),
             horizon_days=settings.forecast_horizon_days,
             top_k=settings.rag_top_k,

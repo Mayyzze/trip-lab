@@ -2,16 +2,40 @@ import asyncio
 import hashlib
 import math
 import re
+from dataclasses import dataclass
 from datetime import date
 
+from pydantic import BaseModel
+
+from trip.extract import Extraction
 from trip.models import (
+    Completion,
     DailyForecast,
     Evidence,
     Location,
+    Message,
     ParsedQuestion,
     WeatherUnavailable,
 )
 from trip.rag import Chunk, Hit
+
+
+def completion(text: str, finish_reason: str = "stop") -> Completion:
+    return Completion(
+        text=text,
+        prompt_tokens=100,
+        completion_tokens=20,
+        finish_reason=finish_reason,
+        latency_s=0.5,
+        retries=0,
+    )
+
+
+@dataclass(frozen=True)
+class CompletionRequest:
+    messages: list[Message]
+    max_tokens: int
+    response_schema: type[BaseModel] | None
 
 
 class FakeClock:
@@ -45,15 +69,37 @@ class FakeEmbedder:
         return [v / norm for v in vector] if norm else vector
 
 class FakeLLM:
-    def __init__(self, parsed: ParsedQuestion | None = None, answer: str = "Sunny in Lisbon.") -> None:
+    """Stands for the model behind each port: Extractor, ChatModel and LLMClient."""
+
+    def __init__(
+        self,
+        parsed: ParsedQuestion | None = None,
+        answer: str = "Sunny in Lisbon.",
+        *,
+        reply: Completion | None = None,
+    ) -> None:
         self._parsed = parsed
         self._answer = answer
+        self._reply = reply
         self.written: list[tuple[str, Evidence]] = []
+        self.completed: list[CompletionRequest] = []
 
-    async def parse_question(self, question: str, today: date) -> ParsedQuestion:
+    async def complete(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int,
+        response_schema: type[BaseModel] | None = None,
+    ) -> Completion:
+        if self._reply is None:
+            raise AssertionError("FakeLLM.complete called but nothing was configured")
+        self.completed.append(CompletionRequest(messages, max_tokens, response_schema))
+        return self._reply
+
+    async def extract(self, question: str, today: date) -> Extraction:
         if self._parsed is None:
-            raise AssertionError("FakeLLM.parse_question called but nothing was configured")
-        return self._parsed
+            raise AssertionError("FakeLLM.extract called but nothing was configured")
+        return Extraction(self._parsed, completion(self._parsed.model_dump_json()))
 
     async def write_answer(self, question: str, evidence: Evidence) -> str:
         self.written.append((question, evidence))
